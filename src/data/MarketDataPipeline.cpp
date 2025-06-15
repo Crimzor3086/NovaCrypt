@@ -36,18 +36,32 @@ void MarketDataPipeline::stop() {
     }
 }
 
-void MarketDataPipeline::pushMarketData(const MarketDataUpdate& update) {
-    if (!validateMarketData(update)) {
+void MarketDataPipeline::pushMarketData(const MarketDataUpdate& data) {
+    if (!validateMarketData(data)) {
+        qualityTracker_.recordDataPoint(data.source, false);
         throw std::runtime_error("Invalid market data received");
     }
-    pushToQueue(marketDataQueue_, update, &MarketDataPipeline::validateMarketData);
+    
+    auto now = std::chrono::system_clock::now();
+    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(now - data.timestamp);
+    qualityTracker_.recordLatency(data.source, latency);
+    qualityTracker_.recordDataPoint(data.source, true);
+    
+    pushToQueue(marketDataQueue_, data, marketDataMutex_);
 }
 
-void MarketDataPipeline::pushOrderBook(const OrderBookUpdate& update) {
-    if (!validateOrderBook(update)) {
+void MarketDataPipeline::pushOrderBook(const OrderBookUpdate& data) {
+    if (!validateOrderBook(data)) {
+        qualityTracker_.recordDataPoint(data.source, false);
         throw std::runtime_error("Invalid order book data received");
     }
-    pushToQueue(orderBookQueue_, update, &MarketDataPipeline::validateOrderBook);
+    
+    auto now = std::chrono::system_clock::now();
+    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(now - data.timestamp);
+    qualityTracker_.recordLatency(data.source, latency);
+    qualityTracker_.recordDataPoint(data.source, true);
+    
+    pushToQueue(orderBookQueue_, data, orderBookMutex_);
 }
 
 void MarketDataPipeline::pushSentiment(const std::string& source,
@@ -165,7 +179,7 @@ void MarketDataPipeline::processLoop() {
 
 void MarketDataPipeline::processMarketData() {
     MarketDataUpdate data;
-    while (popFromQueue(marketDataQueue_, data)) {
+    while (popFromQueue(marketDataQueue_, data, marketDataMutex_)) {
         indicatorManager_->update(data.data);
         
         std::lock_guard<std::mutex> lock(dataMutex_);
@@ -174,12 +188,16 @@ void MarketDataPipeline::processMarketData() {
         if (marketDataCallback_) {
             marketDataCallback_(data);
         }
+        
+        // Record accuracy metrics
+        qualityTracker_.recordPriceAccuracy(data.source, data.confidence >= 0.95);
+        qualityTracker_.recordVolumeAccuracy(data.source, data.confidence >= 0.90);
     }
 }
 
 void MarketDataPipeline::processOrderBook() {
     OrderBookUpdate orderBook;
-    while (popFromQueue(orderBookQueue_, orderBook)) {
+    while (popFromQueue(orderBookQueue_, orderBook, orderBookMutex_)) {
         indicatorManager_->updateOrderBook(orderBook.data);
         
         std::lock_guard<std::mutex> lock(dataMutex_);
@@ -188,6 +206,9 @@ void MarketDataPipeline::processOrderBook() {
         if (orderBookCallback_) {
             orderBookCallback_(orderBook);
         }
+        
+        // Record accuracy metrics
+        qualityTracker_.recordOrderBookAccuracy(orderBook.source, orderBook.confidence >= 0.95);
     }
 }
 
@@ -205,8 +226,8 @@ void MarketDataPipeline::updateFeatures() {
 }
 
 template<typename T>
-void MarketDataPipeline::pushToQueue(std::queue<T>& queue, const T& data, bool (MarketDataPipeline::*validate)(const T&) const) {
-    std::lock_guard<std::mutex> lock(queueMutex_);
+void MarketDataPipeline::pushToQueue(std::queue<T>& queue, const T& data, std::mutex& mutex) {
+    std::lock_guard<std::mutex> lock(mutex);
     
     if (queue.size() >= maxQueueSize_) {
         queue.pop();  // Remove oldest item if queue is full
@@ -217,8 +238,8 @@ void MarketDataPipeline::pushToQueue(std::queue<T>& queue, const T& data, bool (
 }
 
 template<typename T>
-bool MarketDataPipeline::popFromQueue(std::queue<T>& queue, T& data) {
-    std::lock_guard<std::mutex> lock(queueMutex_);
+bool MarketDataPipeline::popFromQueue(std::queue<T>& queue, T& data, std::mutex& mutex) {
+    std::lock_guard<std::mutex> lock(mutex);
     
     if (queue.empty()) {
         return false;
@@ -277,6 +298,18 @@ bool MarketDataPipeline::checkOrderBookConsistency(const OrderBook& data) const 
     }
     
     return true;
+}
+
+DataQualityMetrics MarketDataPipeline::getDataQualityMetrics(const std::string& source) const {
+    return qualityTracker_.getLatestMetrics(source);
+}
+
+std::string MarketDataPipeline::generateDataQualityReport(const std::string& source) const {
+    return qualityTracker_.generateQualityReport(source);
+}
+
+std::string MarketDataPipeline::generateDataQualitySummary() const {
+    return qualityTracker_.generateSummaryReport();
 }
 
 } // namespace novacrypt 

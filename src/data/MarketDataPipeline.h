@@ -8,18 +8,25 @@
 #include <mutex>
 #include <condition_variable>
 #include <functional>
+#include "DataQualityMetrics.h"
 
 namespace novacrypt {
 
 struct MarketDataUpdate {
-    OHLCV data;
+    double price;
+    double volume;
     std::chrono::system_clock::time_point timestamp;
     std::string source;
     double confidence;
 };
 
 struct OrderBookUpdate {
-    OrderBook data;
+    struct Level {
+        double price;
+        double volume;
+    };
+    std::vector<Level> bids;
+    std::vector<Level> asks;
     std::chrono::system_clock::time_point timestamp;
     std::string source;
     double confidence;
@@ -35,15 +42,14 @@ public:
     void stop();
     
     // Data input methods - only accept real data
-    void pushMarketData(const MarketDataUpdate& update);
-    void pushOrderBook(const OrderBookUpdate& update);
-    void pushSentiment(const std::string& source, const std::string& text, double score, double confidence);
+    void pushMarketData(const MarketDataUpdate& data);
+    void pushOrderBook(const OrderBookUpdate& data);
+    void pushSentimentData(const std::string& source, double sentiment);
     
     // Get processed data
-    std::vector<double> getLatestFeatures() const;
     MarketDataUpdate getLatestMarketData() const;
     OrderBookUpdate getLatestOrderBook() const;
-    double getLatestSentiment() const;
+    double getLatestSentiment(const std::string& source) const;
     
     // Configuration
     void setUpdateInterval(std::chrono::milliseconds interval);
@@ -54,13 +60,18 @@ public:
     bool validateOrderBook(const OrderBookUpdate& data) const;
     
     // Callbacks for data updates
-    using DataUpdateCallback = std::function<void(const MarketDataUpdate&)>;
-    using OrderBookUpdateCallback = std::function<void(const OrderBookUpdate&)>;
-    using SentimentUpdateCallback = std::function<void(double)>;
+    using MarketDataCallback = std::function<void(const MarketDataUpdate&)>;
+    using OrderBookCallback = std::function<void(const OrderBookUpdate&)>;
+    using SentimentCallback = std::function<void(const std::string&, double)>;
     
-    void setMarketDataCallback(DataUpdateCallback callback);
-    void setOrderBookCallback(OrderBookUpdateCallback callback);
-    void setSentimentCallback(SentimentUpdateCallback callback);
+    void setMarketDataCallback(MarketDataCallback callback);
+    void setOrderBookCallback(OrderBookCallback callback);
+    void setSentimentCallback(SentimentCallback callback);
+
+    // Data quality methods
+    DataQualityMetrics getDataQualityMetrics(const std::string& source) const;
+    std::string generateDataQualityReport(const std::string& source) const;
+    std::string generateDataQualitySummary() const;
 
 private:
     // Pipeline components
@@ -85,18 +96,18 @@ private:
     mutable std::mutex dataMutex_;
     MarketDataUpdate latestMarketData_;
     OrderBookUpdate latestOrderBook_;
-    std::vector<double> latestFeatures_;
+    std::unordered_map<std::string, double> latestSentiment_;
     
     // Callbacks
-    DataUpdateCallback marketDataCallback_;
-    OrderBookUpdateCallback orderBookCallback_;
-    SentimentUpdateCallback sentimentCallback_;
+    MarketDataCallback marketDataCallback_;
+    OrderBookCallback orderBookCallback_;
+    SentimentCallback sentimentCallback_;
     
     // Processing methods
     void processLoop();
-    void processMarketData();
-    void processOrderBook();
-    void updateFeatures();
+    void processMarketData(const MarketDataUpdate& data);
+    void processOrderBook(const OrderBookUpdate& data);
+    void updateSentiment(const std::string& source, double sentiment);
     
     // Queue management with validation
     template<typename T>
@@ -109,6 +120,8 @@ private:
     bool checkDataFreshness(const std::chrono::system_clock::time_point& timestamp) const;
     bool checkDataConsistency(const OHLCV& data) const;
     bool checkOrderBookConsistency(const OrderBook& data) const;
+
+    DataQualityTracker qualityTracker_;
 };
 
 } // namespace novacrypt 
