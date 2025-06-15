@@ -1,5 +1,6 @@
 #pragma once
 #include "../indicators/MarketData.h"
+#include "../indicators/IndicatorManager.h"
 #include "../sentiment/SentimentAnalyzer.h"
 #include <memory>
 #include <thread>
@@ -9,6 +10,7 @@
 #include <condition_variable>
 #include <functional>
 #include "DataQualityMetrics.h"
+#include <unordered_map>
 
 namespace novacrypt {
 
@@ -47,9 +49,9 @@ public:
     void pushSentimentData(const std::string& source, double sentiment);
     
     // Get processed data
-    MarketDataUpdate getLatestMarketData() const;
-    OrderBookUpdate getLatestOrderBook() const;
-    double getLatestSentiment(const std::string& source) const;
+    MarketDataUpdate getLatestMarketData();
+    OrderBookUpdate getLatestOrderBook();
+    double getLatestSentiment(const std::string& source);
     
     // Configuration
     void setUpdateInterval(std::chrono::milliseconds interval);
@@ -85,7 +87,9 @@ private:
     // Threading
     std::thread processingThread_;
     std::atomic<bool> running_;
-    std::mutex queueMutex_;
+    std::mutex marketDataMutex_;
+    std::mutex orderBookMutex_;
+    std::mutex dataMutex_;
     std::condition_variable queueCondition_;
     
     // Configuration
@@ -93,7 +97,6 @@ private:
     size_t maxQueueSize_;
     
     // Latest processed data
-    mutable std::mutex dataMutex_;
     MarketDataUpdate latestMarketData_;
     OrderBookUpdate latestOrderBook_;
     std::unordered_map<std::string, double> latestSentiment_;
@@ -111,10 +114,10 @@ private:
     
     // Queue management with validation
     template<typename T>
-    void pushToQueue(std::queue<T>& queue, const T& data, bool (MarketDataPipeline::*validate)(const T&) const);
+    void pushToQueue(std::queue<T>& queue, const T& data, std::mutex& mutex);
     
     template<typename T>
-    bool popFromQueue(std::queue<T>& queue, T& data);
+    bool popFromQueue(std::queue<T>& queue, T& data, std::mutex& mutex);
     
     // Data quality checks
     bool checkDataFreshness(const std::chrono::system_clock::time_point& timestamp) const;
