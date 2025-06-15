@@ -29,10 +29,20 @@ set(SRC_FILES
     src/indicators/IndicatorManager.cpp
     src/sentiment/SentimentAnalyzer.cpp
     src/data/MarketDataPipeline.cpp
+    src/data/DataQualityMetrics.cpp
     src/ui/Dashboard.cpp
 )
 
 add_executable(NovaCrypt main.cpp ${SRC_FILES})
+
+# Test files
+set(TEST_FILES
+    src/tests/DataQualityTest.cpp
+)
+
+# Test executable
+add_executable(DataQualityTest ${TEST_FILES})
+target_link_libraries(DataQualityTest pthread)
 
 # Include directories
 target_include_directories(NovaCrypt PRIVATE
@@ -45,6 +55,7 @@ target_include_directories(NovaCrypt PRIVATE
     ${OPENSSL_INCLUDE_DIR}
     ${CURL_INCLUDE_DIRS}
 )
+target_include_directories(DataQualityTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Link libraries
 target_link_libraries(NovaCrypt PRIVATE

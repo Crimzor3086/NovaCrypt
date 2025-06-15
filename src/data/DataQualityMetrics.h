@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <mutex>
 #include <chrono>
+#include <vector>
+#include <cmath>
 
 namespace novacrypt {
 
