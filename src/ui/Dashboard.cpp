@@ -258,10 +258,23 @@ void Dashboard::renderTradeLog() {
     ImGui::Text("Trade Log");
     ImGui::Separator();
 
-    // Example trade log entries
-    ImGui::TextColored(ImVec4(0.0f, 0.8f, 0.0f, 1.0f), "2024-03-20 14:30:15 - BUY  BTC/USD  @ 65,432.10");
-    ImGui::TextColored(ImVec4(0.8f, 0.0f, 0.0f, 1.0f), "2024-03-20 14:35:22 - SELL BTC/USD  @ 65,789.50");
-    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.0f, 1.0f), "2024-03-20 14:40:05 - HOLD ETH/USD  @ 3,456.78");
+    // Display actual trade log entries if available
+    // Example: for (const auto& entry : tradeLog_) { ... }
+    // If tradeLog_ is empty, show a message
+    if (tradeLog_.empty()) {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No trades executed yet.");
+    } else {
+        for (const auto& entry : tradeLog_) {
+            ImVec4 color;
+            if (entry.type == TradeType::BUY)
+                color = ImVec4(0.0f, 0.8f, 0.0f, 1.0f);
+            else if (entry.type == TradeType::SELL)
+                color = ImVec4(0.8f, 0.0f, 0.0f, 1.0f);
+            else
+                color = ImVec4(0.8f, 0.8f, 0.0f, 1.0f);
+            ImGui::TextColored(color, "%s", entry.toString().c_str());
+        }
+    }
 }
 
 void Dashboard::setupTheme() {
